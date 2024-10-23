@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
 import { Shield } from 'lucide-react';
-import { ApiKeyProvider } from './context/ApiKeyContext';
+import { ApiKeyProvider, useApiKey } from './context/ApiKeyContext';
 import { ApiKeyInput } from './components/ApiKeyInput';
 import { FileUpload } from './components/FileUpload';
 import { Analysis } from './components/Analysis';
 import { ErrorMessage } from './components/ErrorMessage';
 import { analyzeContent } from './services/groq';
 import { processImageFile, processEmailFile } from './utils/fileProcessing';
-import { useApiKey } from './context/ApiKeyContext';
 import { AnalysisResult } from './types';
 
 function SecurityAnalyzer() {
-  const { apiKey } = useApiKey();
+  const { apiKey, setApiKey } = useApiKey();
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,8 +22,13 @@ function SecurityAnalyzer() {
       const text = await processImageFile(file);
       const analysis = await analyzeContent(apiKey, text, 'image');
       setResult(analysis);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to process image');
+    } catch (err: any) {
+      if (err.message.includes('401')) {
+        setApiKey('');
+        setError('Invalid API key. Please enter a valid API key.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to process image');
+      }
       setResult(null);
     } finally {
       setLoading(false);
@@ -38,8 +42,13 @@ function SecurityAnalyzer() {
       const text = await processEmailFile(file);
       const analysis = await analyzeContent(apiKey, text, 'email');
       setResult(analysis);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to process email');
+    } catch (err: any) {
+      if (err.message.includes('401')) {
+        setApiKey('');
+        setError('Invalid API key. Please enter a valid API key.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to process email');
+      }
       setResult(null);
     } finally {
       setLoading(false);

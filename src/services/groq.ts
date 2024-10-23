@@ -43,7 +43,7 @@ export async function analyzeContent(
         messages: [
           {
             role: 'system',
-            content: 'You are a cybersecurity expert specializing in analyzing images and emails for security risks. Provide clear, non-technical explanations and practical recommendations.'
+            content: 'You are a cybersecurity expert specializing in analyzing images and emails for security risks. Provide clear, non-technical explanations and practical recommendations to normal people, do not assume they have acces to an IT team or part of an orginisartion. Always start the analysis section with "Analysis Start:", the recommendations section with "Recommendations Start:", and include a risk level (low, medium, high) at the end of the analysis section with "Risk Level:".'
           },
           {
             role: 'user',
@@ -56,32 +56,46 @@ export async function analyzeContent(
       })
     });
 
+    if (response.status === 404) {
+      throw new Error('API endpoint not found. Please check the URL.');
+    }
+
+    if (response.status === 401) {
+      throw new Error('API request failed with status 401. Unauthorized access.');
+    }
+
+    if (response.status === 400) {
+      throw new Error('API request failed with status 400. Bad request.');
+    }
+
     const data = await response.json();
     
     if (!data.choices?.[0]?.message?.content) {
       throw new Error('Invalid response format from API');
     }
 
-    const analysis = data.choices[0].message.content;
+    const analysisContent = data.choices[0].message.content;
 
-    console.log('Analysis:', analysis);
+    console.log('Analysis:', analysisContent);
 
-    // Parse the response to determine risk level and recommendations
-    const riskLevel = analysis.toLowerCase().includes('high risk') ? 'high' 
-                    : analysis.toLowerCase().includes('medium risk') ? 'medium' 
-                    : 'low';
+    // Split the analysis and recommendations based on the distinctive split
+    const [analysisPart, recommendationsPart] = analysisContent.split('Recommendations Start:');
 
-    const recommendations = analysis
-      ? analysis
+    // Extract the risk level from the analysis part
+    const riskLevelMatch = analysisPart.match(/Risk Level:\s*(low|medium|high)/i);
+    const riskLevel = riskLevelMatch ? riskLevelMatch[1].toLowerCase() : 'low';
+
+    const recommendations = recommendationsPart
+      ? recommendationsPart
           .split('\n')
-          .filter((line: string) => line.trim().startsWith('-') || line.trim().startsWith('•'))
-          .map((line: string) => line.trim().replace(/^[-•]\s*/, ''))
+          .filter((line: string) => line.trim().startsWith('1.') || line.trim().startsWith('2.') || line.trim().startsWith('3.') || line.trim().startsWith('4.') || line.trim().startsWith('5.'))
+          .map((line: string) => line.trim().replace(/^\d+\.\s*/, ''))
       : [];
 
     return {
       type,
       content,
-      analysis,
+      analysis: analysisPart.replace('Analysis Start:', '').replace(/Risk Level:\s*(low|medium|high)/i, '').trim(),
       riskLevel,
       recommendations: recommendations.length ? recommendations : ['No specific recommendations provided']
     };
