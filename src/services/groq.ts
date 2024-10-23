@@ -1,5 +1,20 @@
 import { AnalysisResult } from '../types';
 
+async function fetchWithRetry(url: string, options: RequestInit, retries: number = 3): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
+    const response = await fetch(url, options);
+    if (response.ok) {
+      return response;
+    }
+    if (response.status === 503 && i < retries - 1) {
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retrying
+    } else {
+      throw new Error(`API request failed with status ${response.status}`);
+    }
+  }
+  throw new Error('Max retries reached');
+}
+
 export async function analyzeContent(
   apiKey: string,
   content: string,
@@ -18,7 +33,7 @@ export async function analyzeContent(
     : `Analyze this email for potential security risks, phishing attempts, or spam: ${content}`;
 
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const response = await fetchWithRetry('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -41,11 +56,6 @@ export async function analyzeContent(
       })
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error?.message || `API request failed with status ${response.status}`);
-    }
-
     const data = await response.json();
     
     if (!data.choices?.[0]?.message?.content) {
@@ -54,15 +64,19 @@ export async function analyzeContent(
 
     const analysis = data.choices[0].message.content;
 
+    console.log('Analysis:', analysis);
+
     // Parse the response to determine risk level and recommendations
     const riskLevel = analysis.toLowerCase().includes('high risk') ? 'high' 
                     : analysis.toLowerCase().includes('medium risk') ? 'medium' 
                     : 'low';
 
     const recommendations = analysis
-      .split('\n')
-      .filter(line => line.trim().startsWith('-') || line.trim().startsWith('•'))
-      .map(line => line.trim().replace(/^[-•]\s*/, ''));
+      ? analysis
+          .split('\n')
+          .filter((line: string) => line.trim().startsWith('-') || line.trim().startsWith('•'))
+          .map((line: string) => line.trim().replace(/^[-•]\s*/, ''))
+      : [];
 
     return {
       type,
